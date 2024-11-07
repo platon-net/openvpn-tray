@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<gresources>
+  <gresource prefix="/org/platon">
+    <file>images/openvpn-on.png</file>
+    <file>images/openvpn-off.png</file>
+  </gresource>
+</gresources>
+
