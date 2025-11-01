@@ -1,0 +1,43 @@
+# OpenVPN Tray
+
+## Project Overview
+- Lightweight GTK+3 system tray application for managing multiple OpenVPN connections
+- Displays the current VPN status using a tray icon (ON/OFF)
+- Allows toggling of individual VPNs and all VPNs from the left-click menu with checkboxes
+- Right-click menu includes Preferences (update interval), Reload, and Quit
+
+## UI Behavior
+- Left click → main VPN menu:
+  - List of VPNs as checkboxes
+  - Separator
+  - “Turn all VPNs on” or “Turn all VPNs off” (not a checkbox)
+- Right click → control menu:
+  - “Preferences” – opens a dialog to set the update interval
+  - “Reload” – reloads the VPN list immediately
+  - “Quit” – exits the application
+- Console output used for debugging (prints each click and toggle)
+
+## File Structure
+- `openvpn-tray.c` – main source file
+- `resources.xml` – XML manifest for GResource
+- `images/` – contains PNG assets for the tray icons
+- `resources.c` – auto-generated from `resources.xml`
+
+## Internal Details
+- VPN list is auto-detected from /etc/openvpn/*.conf
+- VPN statuses are determined via `systemctl status openvpn@...`
+- Icons switch dynamically based on VPN status (on/off)
+- A Makefile is provided for building the application
+- Images in the `images/` directory are compiled into the binary via GResource (`resources.c`), removing the need for external files
+- Resource prefix: `/org/platon`
+- GTK+4 does not support GtkStatusIcon; this application targets GTK+3 only
+- System tray detection assumes a compliant X11 environment (tested on IceWM)
+
+## Coding Standards
+- C code follows Linux kernel coding style
+- All functions declared at the top of the file
+- Separate logical units: tray init, VPN list management, status polling, UI updates
+- Keep functions under 100 lines, short and focused
+- Use `MAX_VPNS` and `MAX_VPN_NAME_LEN` for bounded array storage
+- Avoid heap allocations unless necessary (static array approach preferred)
+
