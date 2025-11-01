@@ -41,3 +41,8 @@
 - Use `MAX_VPNS` and `MAX_VPN_NAME_LEN` for bounded array storage
 - Avoid heap allocations unless necessary (static array approach preferred)
 
+## Development Rules
+- **COMPILE ONLY**: Code can be compiled with `make` to verify it builds correctly
+- **NEVER RUN**: Do not execute the `./openvpn-tray` binary as it requires root privileges for VPN management and interferes with the running system tray
+- Testing should be done through code review and compilation verification only
+- **TASK COMPLETION**: Always provide a conventional commit message when completing tasks
