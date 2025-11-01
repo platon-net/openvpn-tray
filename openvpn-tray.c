@@ -3,19 +3,26 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/wait.h>
+#include <time.h>
 #include <gtk/gtk.h>
 
+#define APP_NAME "openvpn-tray"
+#define APP_VERSION "0.5"
 #define OPENVPN_CONF_DIR "/etc/openvpn/"
 #define MAX_VPNS 100
 #define MAX_VPN_NAME_LEN 32
+#define STATUS_SUMMARY_INTERVAL 600
 
 //#include "openvpn-on.xpm"
 //#include "openvpn-off.xpm"
 
 static char vpn_labels[MAX_VPNS][MAX_VPN_NAME_LEN];
 static int vpn_states[MAX_VPNS];
+static int previous_vpn_states[MAX_VPNS];
 static int vpn_count = 0;
 static int update_interval = 10;
+static time_t last_log_time = 0;
+static int first_run = 1;
 static GdkPixbuf *pixbuf_on = NULL;
 static GdkPixbuf *pixbuf_off = NULL;
 
@@ -34,6 +41,11 @@ void on_tray_icon_left_click(GtkStatusIcon *tray_icon);
 void on_tray_icon_right_click(GtkStatusIcon *tray_icon, guint button, guint activate_time);
 GtkWidget* create_right_click_menu(GtkStatusIcon *tray_icon);
 void show_preferences_dialog(GtkStatusIcon *tray_icon);
+void on_reload_clicked(GtkMenuItem *item, gpointer tray_icon);
+int should_log_status_summary(void);
+void update_log_time(void);
+void print_vpn_status_summary(void);
+void log_vpn_status_changes(void);
 
 void load_icons() {
     pixbuf_on = gdk_pixbuf_new_from_resource("/org/platon/images/openvpn-on.png", NULL);
@@ -77,13 +89,13 @@ void fetch_vpn_list(GtkStatusIcon *tray_icon) {
 
     if (access(OPENVPN_CONF_DIR, F_OK) != 0) {
         gtk_status_icon_set_tooltip_text(tray_icon, "ERROR: OpenVPN directory does not exist");
-        g_print("ERROR: OpenVPN directory does not exist: %s\n", OPENVPN_CONF_DIR);
+        g_print("%s: ERROR: OpenVPN directory does not exist: %s\n", APP_NAME, OPENVPN_CONF_DIR);
         return;
     }
 
     if (chdir(OPENVPN_CONF_DIR) != 0) {
         gtk_status_icon_set_tooltip_text(tray_icon, "ERROR: Unable to change to OpenVPN directory");
-        g_print("ERROR: Unable to change to OpenVPN directory: %s\n", OPENVPN_CONF_DIR);
+        g_print("%s: ERROR: Unable to change to OpenVPN directory: %s\n", APP_NAME, OPENVPN_CONF_DIR);
         return;
     }
 
@@ -110,17 +122,16 @@ void fetch_vpn_list(GtkStatusIcon *tray_icon) {
 
         if (WIFEXITED(return_code) && WEXITSTATUS(return_code) == 0) {
             vpn_states[vpn_count] = 1;
-            g_print("VPN %s is ON\n", vpn_labels[vpn_count]);
         } else {
             vpn_states[vpn_count] = 0;
-            g_print("VPN %s is OFF\n", vpn_labels[vpn_count]);
         }
 
         vpn_count++;
     }
 
     globfree(&glob_result);
-
+    
+    log_vpn_status_changes();
     update_icon(tray_icon);
 }
 
@@ -128,14 +139,16 @@ void turn_on_vpn(const char *vpn_name) {
     char command[256];
     snprintf(command, sizeof(command), "systemctl start openvpn@%s", vpn_name);
     system(command);
-    g_print("Turned ON VPN: %s\n", vpn_name);
+    g_print("%s: Turned ON VPN: %s\n", APP_NAME, vpn_name);
+    update_log_time();
 }
 
 void turn_off_vpn(const char *vpn_name) {
     char command[256];
     snprintf(command, sizeof(command), "systemctl stop openvpn@%s", vpn_name);
     system(command);
-    g_print("Turned OFF VPN: %s\n", vpn_name);
+    g_print("%s: Turned OFF VPN: %s\n", APP_NAME, vpn_name);
+    update_log_time();
 }
 
 void turn_on_all_vpns(void) {
@@ -169,7 +182,8 @@ void on_vpn_toggle(GtkCheckMenuItem *item, gpointer data) {
 
     update_icon((GtkStatusIcon *)g_object_get_data(G_OBJECT(item), "tray_icon"));
 
-    g_print("VPN %s toggled to %s\n", vpn_labels[vpn_index], active ? "ON" : "OFF");
+    g_print("%s: VPN %s toggled to %s\n", APP_NAME, vpn_labels[vpn_index], active ? "ON" : "OFF");
+    update_log_time();
 }
 
 void show_preferences_dialog(GtkStatusIcon *tray_icon) {
@@ -203,7 +217,8 @@ void show_preferences_dialog(GtkStatusIcon *tray_icon) {
     if (gtk_dialog_run(GTK_DIALOG(dialog)) == GTK_RESPONSE_OK) {
         const char *new_interval = gtk_entry_get_text(GTK_ENTRY(entry));
         update_interval = atoi(new_interval);
-        g_print("VPN list update interval updated to: %d seconds\n", update_interval);
+        g_print("%s: VPN list update interval updated to: %d seconds\n", APP_NAME, update_interval);
+        update_log_time();
 
         g_timeout_add_seconds(update_interval, refresh_vpn_list, tray_icon);
     }
@@ -239,13 +254,15 @@ GtkWidget* create_vpn_list(GtkStatusIcon *tray_icon) {
 }
 
 void on_tray_icon_left_click(GtkStatusIcon *tray_icon) {
-    g_print("Left-click detected\n");
+    g_print("%s: Left-click detected\n", APP_NAME);
+    update_log_time();
     GtkWidget *menu = create_vpn_list(tray_icon);
     gtk_menu_popup_at_pointer(GTK_MENU(menu), NULL);
 }
 
 void on_tray_icon_right_click(GtkStatusIcon *tray_icon, guint button, guint activate_time) {
-    g_print("Right-click detected\n");
+    g_print("%s: Right-click detected\n", APP_NAME);
+    update_log_time();
     GtkWidget *menu = create_right_click_menu(tray_icon);
     gtk_menu_popup_at_pointer(GTK_MENU(menu), NULL);
 }
@@ -254,7 +271,7 @@ GtkWidget* create_right_click_menu(GtkStatusIcon *tray_icon) {
     GtkWidget *menu = gtk_menu_new();
 
     GtkWidget *reload_item = gtk_menu_item_new_with_label("Reload");
-    g_signal_connect(reload_item, "activate", G_CALLBACK(g_print), "Reload clicked\n");
+    g_signal_connect(reload_item, "activate", G_CALLBACK(on_reload_clicked), tray_icon);
     gtk_menu_shell_append(GTK_MENU_SHELL(menu), reload_item);
 
     GtkWidget *preferences_item = gtk_menu_item_new_with_label("Preferences");
@@ -275,6 +292,8 @@ int main(int argc, char *argv[]) {
 
     gtk_init(&argc, &argv);
 	    gtk_init(&argc, &argv);
+
+    g_print("%s: Starting %s version %s\n", APP_NAME, APP_NAME, APP_VERSION);
 
     // Initialize the pixbufs
     load_icons();
@@ -299,3 +318,65 @@ int main(int argc, char *argv[]) {
     return 0;
 }
 
+int should_log_status_summary(void)
+{
+    time_t current_time = time(NULL);
+    return (current_time - last_log_time) >= STATUS_SUMMARY_INTERVAL;
+}
+
+void update_log_time(void)
+{
+    last_log_time = time(NULL);
+}
+
+void print_vpn_status_summary(void)
+{
+    for (int i = 0; i < vpn_count; i++) {
+        g_print("%s: VPN %s is %s\n", APP_NAME, vpn_labels[i], vpn_states[i] ? "ON" : "OFF");
+    }
+}
+
+void on_reload_clicked(GtkMenuItem *item, gpointer tray_icon)
+{
+    g_print("%s: Reload clicked\n", APP_NAME);
+    update_log_time();
+    fetch_vpn_list(GTK_STATUS_ICON(tray_icon));
+}
+
+void log_vpn_status_changes(void)
+{
+    int changes_detected = 0;
+    int force_summary = should_log_status_summary();
+    
+    if (first_run || force_summary) {
+        if (force_summary) {
+            g_print("%s: === Periodic VPN status summary ===\n", APP_NAME);
+        }
+        print_vpn_status_summary();
+        changes_detected = 1;
+        first_run = 0;
+    } else {
+        for (int i = 0; i < vpn_count; i++) {
+            if (previous_vpn_states[i] != vpn_states[i]) {
+                g_print("%s: VPN %s changed from %s to %s\n", 
+                       APP_NAME, vpn_labels[i],
+                       previous_vpn_states[i] ? "ON" : "OFF",
+                       vpn_states[i] ? "ON" : "OFF");
+                changes_detected = 1;
+            }
+        }
+        
+        if (changes_detected) {
+            g_print("%s: === Current VPN Status ===\n", APP_NAME);
+            print_vpn_status_summary();
+        }
+    }
+    
+    if (changes_detected) {
+        update_log_time();
+    }
+    
+    for (int i = 0; i < vpn_count; i++) {
+        previous_vpn_states[i] = vpn_states[i];
+    }
+}
