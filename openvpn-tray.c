@@ -343,9 +343,61 @@ void update_log_time(void)
 
 void print_vpn_status_summary(void)
 {
-    for (int i = 0; i < vpn_count; i++) {
-        g_print("%s: VPN %s is %s\n", APP_NAME, vpn_labels[i], vpn_states[i] ? "ON" : "OFF");
+    if (vpn_count == 0) {
+        g_print("No VPNs configured\n");
+        return;
     }
+
+    // Calculate maximum VPN name length
+    int max_name_len = 8; // Minimum for "VPN Name"
+    for (int i = 0; i < vpn_count; i++) {
+        int len = strlen(vpn_labels[i]);
+        if (len > max_name_len) {
+            max_name_len = len;
+        }
+    }
+
+    // Table dimensions
+    int status_col_width = 6; // "Status"
+    int total_width = max_name_len + 3 + status_col_width + 3 + 1; // padding + borders
+    
+    // Calculate centering for title
+    const char *title = " " APP_NAME " status ";
+    int title_len = strlen(title);
+    int available_space = total_width - 2; // minus the + borders
+    int left_padding = (available_space - title_len) / 2;
+    int right_padding = available_space - title_len - left_padding;
+
+    // Top border with centered title
+    g_print("+");
+    for (int i = 0; i < left_padding; i++) g_print("-");
+    g_print("%s", title);
+    for (int i = 0; i < right_padding; i++) g_print("-");
+    g_print("+\n");
+
+    // Column headers
+    g_print("| %-*s | %-*s |\n", max_name_len, "VPN Name", status_col_width, "Status");
+
+    // Separator row
+    g_print("+");
+    for (int i = 0; i < max_name_len + 2; i++) g_print("-");
+    g_print("+");
+    for (int i = 0; i < status_col_width + 2; i++) g_print("-");
+    g_print("+\n");
+
+    // VPN entries
+    for (int i = 0; i < vpn_count; i++) {
+        g_print("| %-*s | %-*s |\n", 
+                max_name_len, vpn_labels[i], 
+                status_col_width, vpn_states[i] ? "ON" : "OFF");
+    }
+
+    // Bottom border
+    g_print("+");
+    for (int i = 0; i < max_name_len + 2; i++) g_print("-");
+    g_print("+");
+    for (int i = 0; i < status_col_width + 2; i++) g_print("-");
+    g_print("+\n");
 }
 
 void on_reload_clicked(GtkMenuItem *item, gpointer tray_icon)
@@ -361,9 +413,6 @@ void log_vpn_status_changes(void)
     int force_summary = should_log_status_summary();
     
     if (first_run || force_summary) {
-        if (force_summary) {
-            g_print("%s: === Periodic VPN status summary ===\n", APP_NAME);
-        }
         print_vpn_status_summary();
         changes_detected = 1;
         first_run = 0;
@@ -379,7 +428,6 @@ void log_vpn_status_changes(void)
         }
         
         if (changes_detected) {
-            g_print("%s: === Current VPN Status ===\n", APP_NAME);
             print_vpn_status_summary();
         }
     }
