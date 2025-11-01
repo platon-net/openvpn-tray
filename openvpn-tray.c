@@ -4,6 +4,7 @@
 #include <string.h>
 #include <sys/wait.h>
 #include <time.h>
+#include <unistd.h>
 #include <gtk/gtk.h>
 #include "openvpn-tray.h"
 #include "logging.h"
@@ -18,6 +19,7 @@ int vpn_count = 0;
 static int update_interval = 10;
 time_t last_log_time = 0;
 int first_run = 1;
+int read_only_mode = 1;
 static guint timer_id = 0;
 static GdkPixbuf *pixbuf_on = NULL;
 static GdkPixbuf *pixbuf_off = NULL;
@@ -60,10 +62,18 @@ void update_icon(GtkStatusIcon *tray_icon) {
 #pragma GCC diagnostic ignored "-Wdeprecated-declarations"
     if (any_vpn_on) {
         gtk_status_icon_set_from_pixbuf(tray_icon, pixbuf_on);
-        gtk_status_icon_set_tooltip_text(tray_icon, "OpenVPN - VPN(s) running");
+        if (!read_only_mode) {
+            gtk_status_icon_set_tooltip_text(tray_icon, "OpenVPN - VPN(s) running");
+        } else {
+            gtk_status_icon_set_tooltip_text(tray_icon, "OpenVPN - VPN(s) running (Read-Only - Need sudo)");
+        }
     } else {
         gtk_status_icon_set_from_pixbuf(tray_icon, pixbuf_off);
-        gtk_status_icon_set_tooltip_text(tray_icon, "OpenVPN - All VPNs off");
+        if (!read_only_mode) {
+            gtk_status_icon_set_tooltip_text(tray_icon, "OpenVPN - All VPNs off");
+        } else {
+            gtk_status_icon_set_tooltip_text(tray_icon, "OpenVPN - All VPNs off (Read-Only - Need sudo)");
+        }
     }
 #pragma GCC diagnostic pop
 }
@@ -137,6 +147,11 @@ void fetch_vpn_list(GtkStatusIcon *tray_icon) {
 }
 
 void turn_on_vpn(const char *vpn_name) {
+    if (read_only_mode) {
+        g_print("%s: Cannot turn ON VPN %s - need sudo privileges (read-only mode)\n", APP_NAME, vpn_name);
+        update_log_time();
+        return;
+    }
     char command[256];
     snprintf(command, sizeof(command), "systemctl start openvpn@%s", vpn_name);
     system(command);
@@ -145,6 +160,11 @@ void turn_on_vpn(const char *vpn_name) {
 }
 
 void turn_off_vpn(const char *vpn_name) {
+    if (read_only_mode) {
+        g_print("%s: Cannot turn OFF VPN %s - need sudo privileges (read-only mode)\n", APP_NAME, vpn_name);
+        update_log_time();
+        return;
+    }
     char command[256];
     snprintf(command, sizeof(command), "systemctl stop openvpn@%s", vpn_name);
     system(command);
@@ -244,19 +264,28 @@ GtkWidget* create_vpn_list(GtkStatusIcon *tray_icon) {
     for (int i = 0; i < vpn_count; i++) {
         GtkWidget *vpn_item = gtk_check_menu_item_new_with_label(vpn_labels[i]);
         gtk_check_menu_item_set_active(GTK_CHECK_MENU_ITEM(vpn_item), vpn_states[i]);
-        g_signal_connect(vpn_item, "toggled", G_CALLBACK(on_vpn_toggle), GINT_TO_POINTER(i));
+        
+        // Disable checkboxes in read-only mode
+        if (read_only_mode) {
+            gtk_widget_set_sensitive(vpn_item, FALSE);
+        } else {
+            g_signal_connect(vpn_item, "toggled", G_CALLBACK(on_vpn_toggle), GINT_TO_POINTER(i));
+            g_object_set_data(G_OBJECT(vpn_item), "tray_icon", tray_icon);
+        }
+        
         gtk_menu_shell_append(GTK_MENU_SHELL(menu), vpn_item);
-        g_object_set_data(G_OBJECT(vpn_item), "tray_icon", tray_icon);
     }
 
     GtkWidget *separator = gtk_separator_menu_item_new();
     gtk_menu_shell_append(GTK_MENU_SHELL(menu), separator);
 
     GtkWidget *turn_all_on_item = gtk_menu_item_new_with_label("Turn all VPNs on");
+    gtk_widget_set_sensitive(turn_all_on_item, !read_only_mode);
     g_signal_connect(turn_all_on_item, "activate", G_CALLBACK(turn_on_all_vpns), NULL);
     gtk_menu_shell_append(GTK_MENU_SHELL(menu), turn_all_on_item);
 
     GtkWidget *turn_all_off_item = gtk_menu_item_new_with_label("Turn all VPNs off");
+    gtk_widget_set_sensitive(turn_all_off_item, !read_only_mode);
     g_signal_connect(turn_all_off_item, "activate", G_CALLBACK(turn_off_all_vpns), NULL);
     gtk_menu_shell_append(GTK_MENU_SHELL(menu), turn_all_off_item);
 
@@ -299,6 +328,12 @@ GtkWidget* create_right_click_menu(GtkStatusIcon *tray_icon) {
     return menu;
 }
 
+int check_privileges(void)
+{
+    // Check if running as root (UID 0) - if not, we're in read-only mode
+    return (getuid() != 0);
+}
+
 int main(int argc, char *argv[]) {
     GtkStatusIcon *tray_icon;
 
@@ -306,6 +341,12 @@ int main(int argc, char *argv[]) {
 	    gtk_init(&argc, &argv);
 
     g_print("%s: Starting %s version %s\n", APP_NAME, APP_NAME, APP_VERSION);
+
+    // Check privileges
+    read_only_mode = check_privileges();
+    if (read_only_mode) {
+        g_print("%s: WARNING: VPN control disabled - need sudo for read-write mode\n", APP_NAME);
+    }
 
     // Initialize the pixbufs
     load_icons();
