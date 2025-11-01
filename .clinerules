@@ -31,6 +31,7 @@
 - Images in the `images/` directory are compiled into the binary via GResource (`resources.c`), removing the need for external files
 - Resource prefix: `/org/platon`
 - GTK+4 does not support GtkStatusIcon; this application targets GTK+3 only
+- GtkStatusIcon deprecation warnings are suppressed with pragma directives since no alternative exists in GTK+3
 - System tray detection assumes a compliant X11 environment (tested on IceWM)
 
 ## Coding Standards

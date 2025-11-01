@@ -65,6 +65,8 @@ void update_icon(GtkStatusIcon *tray_icon) {
     }
 
     // Use the preloaded pixbufs based on VPN state
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wdeprecated-declarations"
     if (any_vpn_on) {
         gtk_status_icon_set_from_pixbuf(tray_icon, pixbuf_on);
         gtk_status_icon_set_tooltip_text(tray_icon, "OpenVPN - VPN(s) running");
@@ -72,6 +74,7 @@ void update_icon(GtkStatusIcon *tray_icon) {
         gtk_status_icon_set_from_pixbuf(tray_icon, pixbuf_off);
         gtk_status_icon_set_tooltip_text(tray_icon, "OpenVPN - All VPNs off");
     }
+#pragma GCC diagnostic pop
 }
 
 void cleanup_icons() {
@@ -89,13 +92,19 @@ void fetch_vpn_list(GtkStatusIcon *tray_icon) {
     int i;
 
     if (access(OPENVPN_CONF_DIR, F_OK) != 0) {
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wdeprecated-declarations"
         gtk_status_icon_set_tooltip_text(tray_icon, "ERROR: OpenVPN directory does not exist");
+#pragma GCC diagnostic pop
         g_print("%s: ERROR: OpenVPN directory does not exist: %s\n", APP_NAME, OPENVPN_CONF_DIR);
         return;
     }
 
     if (chdir(OPENVPN_CONF_DIR) != 0) {
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wdeprecated-declarations"
         gtk_status_icon_set_tooltip_text(tray_icon, "ERROR: Unable to change to OpenVPN directory");
+#pragma GCC diagnostic pop
         g_print("%s: ERROR: Unable to change to OpenVPN directory: %s\n", APP_NAME, OPENVPN_CONF_DIR);
         return;
     }
@@ -311,10 +320,13 @@ int main(int argc, char *argv[]) {
     load_icons();
 
     // Create the tray icon and set the initial state
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wdeprecated-declarations"
     tray_icon = gtk_status_icon_new();
     update_icon(tray_icon);  // Set initial icon
 
     gtk_status_icon_set_visible(tray_icon, TRUE);
+#pragma GCC diagnostic pop
 
     fetch_vpn_list(tray_icon);
 
