@@ -18,9 +18,12 @@
 - Console output used for debugging (prints each click and toggle)
 
 ## File Structure
-- `openvpn-tray.c` – main source file
-- `resources.xml` – XML manifest for GResource
+- `openvpn-tray.c` – main source file with UI and VPN management
+- `openvpn-tray.h` – common application defines and constants
+- `logging.c` – logging and status table formatting functions
+- `logging.h` – logging module interface
 - `images/` – contains PNG assets for the tray icons
+- `resources.xml` – XML manifest for GResource
 - `resources.c` – auto-generated from `resources.xml`
 
 ## Internal Details

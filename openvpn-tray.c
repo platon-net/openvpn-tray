@@ -5,24 +5,19 @@
 #include <sys/wait.h>
 #include <time.h>
 #include <gtk/gtk.h>
-
-#define APP_NAME "openvpn-tray"
-#define APP_VERSION "0.5"
-#define OPENVPN_CONF_DIR "/etc/openvpn/"
-#define MAX_VPNS 100
-#define MAX_VPN_NAME_LEN 32
-#define STATUS_SUMMARY_INTERVAL 600
+#include "openvpn-tray.h"
+#include "logging.h"
 
 //#include "openvpn-on.xpm"
 //#include "openvpn-off.xpm"
 
-static char vpn_labels[MAX_VPNS][MAX_VPN_NAME_LEN];
-static int vpn_states[MAX_VPNS];
-static int previous_vpn_states[MAX_VPNS];
-static int vpn_count = 0;
+char vpn_labels[MAX_VPNS][MAX_VPN_NAME_LEN];
+int vpn_states[MAX_VPNS];
+int previous_vpn_states[MAX_VPNS];
+int vpn_count = 0;
 static int update_interval = 10;
-static time_t last_log_time = 0;
-static int first_run = 1;
+time_t last_log_time = 0;
+int first_run = 1;
 static guint timer_id = 0;
 static GdkPixbuf *pixbuf_on = NULL;
 static GdkPixbuf *pixbuf_off = NULL;
@@ -43,10 +38,6 @@ void on_tray_icon_right_click(GtkStatusIcon *tray_icon, guint button, guint acti
 GtkWidget* create_right_click_menu(GtkStatusIcon *tray_icon);
 void show_preferences_dialog(GtkStatusIcon *tray_icon);
 void on_reload_clicked(GtkMenuItem *item, gpointer tray_icon);
-int should_log_status_summary(void);
-void update_log_time(void);
-void print_vpn_status_summary(void);
-void log_vpn_status_changes(void);
 
 void load_icons() {
     pixbuf_on = gdk_pixbuf_new_from_resource("/org/platon/images/openvpn-on.png", NULL);
@@ -342,113 +333,12 @@ int main(int argc, char *argv[]) {
     return 0;
 }
 
-int should_log_status_summary(void)
-{
-    time_t current_time = time(NULL);
-    return (current_time - last_log_time) >= STATUS_SUMMARY_INTERVAL;
-}
 
-void update_log_time(void)
-{
-    last_log_time = time(NULL);
-}
 
-void print_vpn_status_summary(void)
-{
-    if (vpn_count == 0) {
-        g_print("No VPNs configured\n");
-        return;
-    }
-
-    // Calculate maximum VPN name length
-    int max_name_len = 8; // Minimum for "VPN Name"
-    for (int i = 0; i < vpn_count; i++) {
-        int len = strlen(vpn_labels[i]);
-        if (len > max_name_len) {
-            max_name_len = len;
-        }
-    }
-
-    // Table dimensions
-    int status_col_width = 6; // "Status"
-    int total_width = max_name_len + 3 + status_col_width + 3 + 1; // padding + borders
-    
-    // Calculate centering for title
-    const char *title = " " APP_NAME " status ";
-    int title_len = strlen(title);
-    int available_space = total_width - 2; // minus the + borders
-    int left_padding = (available_space - title_len) / 2;
-    int right_padding = available_space - title_len - left_padding;
-
-    // Top border with centered title
-    g_print("+");
-    for (int i = 0; i < left_padding; i++) g_print("-");
-    g_print("%s", title);
-    for (int i = 0; i < right_padding; i++) g_print("-");
-    g_print("+\n");
-
-    // Column headers
-    g_print("| %-*s | %-*s |\n", max_name_len, "VPN Name", status_col_width, "Status");
-
-    // Separator row
-    g_print("+");
-    for (int i = 0; i < max_name_len + 2; i++) g_print("-");
-    g_print("+");
-    for (int i = 0; i < status_col_width + 2; i++) g_print("-");
-    g_print("+\n");
-
-    // VPN entries
-    for (int i = 0; i < vpn_count; i++) {
-        g_print("| %-*s | %-*s |\n", 
-                max_name_len, vpn_labels[i], 
-                status_col_width, vpn_states[i] ? "ON" : "OFF");
-    }
-
-    // Bottom border
-    g_print("+");
-    for (int i = 0; i < max_name_len + 2; i++) g_print("-");
-    g_print("+");
-    for (int i = 0; i < status_col_width + 2; i++) g_print("-");
-    g_print("+\n");
-}
 
 void on_reload_clicked(GtkMenuItem *item, gpointer tray_icon)
 {
     g_print("%s: Reload clicked\n", APP_NAME);
     update_log_time();
     fetch_vpn_list(GTK_STATUS_ICON(tray_icon));
-}
-
-void log_vpn_status_changes(void)
-{
-    int changes_detected = 0;
-    int force_summary = should_log_status_summary();
-    
-    if (first_run || force_summary) {
-        print_vpn_status_summary();
-        changes_detected = 1;
-        first_run = 0;
-    } else {
-        for (int i = 0; i < vpn_count; i++) {
-            if (previous_vpn_states[i] != vpn_states[i]) {
-                g_print("%s: VPN %s changed from %s to %s\n", 
-                       APP_NAME, vpn_labels[i],
-                       previous_vpn_states[i] ? "ON" : "OFF",
-                       vpn_states[i] ? "ON" : "OFF");
-                changes_detected = 1;
-            }
-        }
-        
-        if (changes_detected) {
-            print_vpn_status_summary();
-        }
-    }
-    
-    if (changes_detected) {
-        update_log_time();
-    }
-    
-    for (int i = 0; i < vpn_count; i++) {
-        previous_vpn_states[i] = vpn_states[i];
-    }
 }

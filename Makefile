@@ -24,7 +24,7 @@ CFLAGS = `pkg-config --cflags gtk+-3.0`
 LDFLAGS = `pkg-config --libs gtk+-3.0`
 
 # Files
-SRC = openvpn-tray.c
+SRC = openvpn-tray.c logging.c
 RES_XML = resources.xml
 RES_SRC = resources.c
 RES_GRESOURCE = resources.gresource
@@ -53,4 +53,3 @@ clean:
 	rm -f $(OUTPUT) $(RES_SRC) $(RES_GRESOURCE)
 
 # vim600: fdm=marker fdc=3
-
