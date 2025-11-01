@@ -23,6 +23,7 @@ static int vpn_count = 0;
 static int update_interval = 10;
 static time_t last_log_time = 0;
 static int first_run = 1;
+static guint timer_id = 0;
 static GdkPixbuf *pixbuf_on = NULL;
 static GdkPixbuf *pixbuf_off = NULL;
 
@@ -164,6 +165,10 @@ void turn_off_all_vpns(void) {
 }
 
 gboolean refresh_vpn_list(gpointer tray_icon) {
+    if (!tray_icon || !GTK_IS_STATUS_ICON(tray_icon)) {
+        g_print("%s: ERROR: Invalid tray icon in timer callback\n", APP_NAME);
+        return FALSE; // Stop the timer
+    }
     fetch_vpn_list(GTK_STATUS_ICON(tray_icon));
     return TRUE;
 }
@@ -180,7 +185,10 @@ void on_vpn_toggle(GtkCheckMenuItem *item, gpointer data) {
         vpn_states[vpn_index] = 0;
     }
 
-    update_icon((GtkStatusIcon *)g_object_get_data(G_OBJECT(item), "tray_icon"));
+    GtkStatusIcon *tray_icon = (GtkStatusIcon *)g_object_get_data(G_OBJECT(item), "tray_icon");
+    if (tray_icon && GTK_IS_STATUS_ICON(tray_icon)) {
+        update_icon(tray_icon);
+    }
 
     g_print("%s: VPN %s toggled to %s\n", APP_NAME, vpn_labels[vpn_index], active ? "ON" : "OFF");
     update_log_time();
@@ -220,7 +228,11 @@ void show_preferences_dialog(GtkStatusIcon *tray_icon) {
         g_print("%s: VPN list update interval updated to: %d seconds\n", APP_NAME, update_interval);
         update_log_time();
 
-        g_timeout_add_seconds(update_interval, refresh_vpn_list, tray_icon);
+        // Remove old timer before creating new one
+        if (timer_id > 0) {
+            g_source_remove(timer_id);
+        }
+        timer_id = g_timeout_add_seconds(update_interval, refresh_vpn_list, tray_icon);
     }
 
     gtk_widget_destroy(dialog);
@@ -309,7 +321,7 @@ int main(int argc, char *argv[]) {
     g_signal_connect(G_OBJECT(tray_icon), "activate", G_CALLBACK(on_tray_icon_left_click), NULL);
     g_signal_connect(G_OBJECT(tray_icon), "popup-menu", G_CALLBACK(on_tray_icon_right_click), NULL);
 
-    g_timeout_add_seconds(update_interval, refresh_vpn_list, tray_icon);
+    timer_id = g_timeout_add_seconds(update_interval, refresh_vpn_list, tray_icon);
 
     gtk_main();
 
