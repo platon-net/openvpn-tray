@@ -40,6 +40,50 @@ void on_tray_icon_right_click(GtkStatusIcon *tray_icon, guint button, guint acti
 GtkWidget* create_right_click_menu(GtkStatusIcon *tray_icon);
 void show_preferences_dialog(GtkStatusIcon *tray_icon);
 void on_reload_clicked(GtkMenuItem *item, gpointer tray_icon);
+static gboolean run_systemctl_unit_command(const char *action, const char *vpn_name, gint *wait_status_out);
+static gboolean is_vpn_active(const char *vpn_name);
+
+static gboolean run_systemctl_unit_command(const char *action, const char *vpn_name, gint *wait_status_out) {
+    gchar unit_name[128];
+    gchar *argv[] = { "systemctl", (gchar *) action, unit_name, NULL };
+    gchar *stdout_buf = NULL;
+    gchar *stderr_buf = NULL;
+    gint wait_status = 0;
+    GError *error = NULL;
+
+    g_snprintf(unit_name, sizeof(unit_name), "openvpn@%s", vpn_name);
+
+    if (!g_spawn_sync(NULL, argv, NULL, G_SPAWN_SEARCH_PATH, NULL, NULL,
+                      &stdout_buf, &stderr_buf, &wait_status, &error)) {
+        g_printerr("%s: ERROR: Failed to run systemctl %s for %s: %s\n",
+                   APP_NAME, action, vpn_name, error ? error->message : "unknown error");
+        if (error) {
+            g_error_free(error);
+        }
+        g_free(stdout_buf);
+        g_free(stderr_buf);
+        return FALSE;
+    }
+
+    g_free(stdout_buf);
+    g_free(stderr_buf);
+
+    if (wait_status_out) {
+        *wait_status_out = wait_status;
+    }
+
+    return TRUE;
+}
+
+static gboolean is_vpn_active(const char *vpn_name) {
+    gint wait_status = 0;
+
+    if (!run_systemctl_unit_command("is-active", vpn_name, &wait_status)) {
+        return FALSE;
+    }
+
+    return WIFEXITED(wait_status) && WEXITSTATUS(wait_status) == 0;
+}
 
 void load_icons() {
     pixbuf_on = gdk_pixbuf_new_from_resource("/org/platon/images/openvpn-on.png", NULL);
@@ -126,12 +170,7 @@ void fetch_vpn_list(GtkStatusIcon *tray_icon) {
         strncpy(vpn_labels[vpn_count], filename, len);
         vpn_labels[vpn_count][len] = '\0';
 
-        char command[256];
-        snprintf(command, sizeof(command), "systemctl is-active openvpn@%s > /dev/null 2>&1", vpn_labels[vpn_count]);
-
-        int return_code = system(command);
-
-        if (WIFEXITED(return_code) && WEXITSTATUS(return_code) == 0) {
+        if (is_vpn_active(vpn_labels[vpn_count])) {
             vpn_states[vpn_count] = 1;
         } else {
             vpn_states[vpn_count] = 0;
@@ -152,9 +191,7 @@ void turn_on_vpn(const char *vpn_name) {
         update_log_time();
         return;
     }
-    char command[256];
-    snprintf(command, sizeof(command), "systemctl start openvpn@%s", vpn_name);
-    system(command);
+    run_systemctl_unit_command("start", vpn_name, NULL);
     g_print("%s: Turned ON VPN: %s\n", APP_NAME, vpn_name);
     update_log_time();
 }
@@ -165,9 +202,7 @@ void turn_off_vpn(const char *vpn_name) {
         update_log_time();
         return;
     }
-    char command[256];
-    snprintf(command, sizeof(command), "systemctl stop openvpn@%s", vpn_name);
-    system(command);
+    run_systemctl_unit_command("stop", vpn_name, NULL);
     g_print("%s: Turned OFF VPN: %s\n", APP_NAME, vpn_name);
     update_log_time();
 }
